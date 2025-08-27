@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dooms AI Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+            background: #000000;
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border-bottom: 2px solid #333333;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            letter-spacing: 1px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00ff00;
+            box-shadow: 0 0 10px currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.loading {
+            background: #ff6600;
+        }
+
+        .status-dot.error {
+            background: #ff0000;
+        }
+
+        .status-text {
+            font-size: 11px;
+            color: #cccccc;
+            font-weight: 500;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.9); }
+        }
+
+        /* Setup Log */
+        .setup-log {
+            background: #0a0a0a;
+            border-bottom: 1px solid #333333;
+            padding: 12px;
+            max-height: 120px;
+            overflow-y: auto;
+            font-size: 10px;
+            color: #00ff00;
+            text-shadow: 0 0 5px #00ff00;
+            display: none;
+        }
+
+        .setup-log.visible {
+            display: block;
+        }
+
+        .setup-log-item {
+            margin: 2px 0;
+        }
+
+        .setup-log-item::before {
+            content: "$ ";
+            color: #00ff00;
+        }
+
+        /* Chat Messages */
+        .chat-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #333333;
+            border-radius: 3px;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            display: flex;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-bubble {
+            max-width: 75%;
+            min-width: 120px;
+            padding: 16px;
+            border-radius: 16px;
+            position: relative;
+            word-wrap: break-word;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease;
+        }
+
+        .message-bubble:hover {
+            transform: translateY(-2px);
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #0088dd 0%, #006699 100%);
+            color: #ffffff;
+            border-bottom-right-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 136, 221, 0.3);
+        }
+
+        .message.assistant .message-bubble {
+            background: linear-gradient(135deg, #222222 0%, #1a1a1a 100%);
+            color: #ffffff;
+            border: 1px solid #333333;
+            border-bottom-left-radius: 6px;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            opacity: 0.9;
+        }
+
+        .message-role {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .thinking-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 10px;
+            color: #cccccc;
+            transition: all 0.2s ease;
+        }
+
+        .thinking-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .thinking-content {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #444444;
+            border-left: 4px solid #666666;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            font-style: italic;
+            font-size: 10px;
+            color: #999999;
+            display: none;
+        }
+
+        .thinking-content.visible {
+            display: block;
+        }
+
+        .message-content {
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        /* Input Area */
+        .input-container {
+            background: linear-gradient(135deg, #111111 0%, #1a1a1a 100%);
+            border-top: 2px solid #333333;
+            padding: 16px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .input-field {
+            flex: 1;
+            background: #1a1a1a;
+            border: 2px solid #333333;
+            border-radius: 8px;
+            padding: 12px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 12px;
+            resize: none;
+            min-height: 44px;
+            max-height: 120px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 10px rgba(0, 122, 204, 0.3);
+        }
+
+        .input-field::placeholder {
+            color: #666666;
+        }
+
+        .input-field:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .send-button {
+            background: linear-gradient(135deg, #0088dd 0%, #006699 100%);
+            border: 2px solid #0099ff;
+            border-radius: 8px;
+            padding: 12px 20px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+            height: 44px;
+            letter-spacing: 1px;
+        }
+
+        .send-button:hover:not(:disabled) {
+            background: linear-gradient(135deg, #0099ff 0%, #0077cc 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 153, 255, 0.4);
+        }
+
+        .send-button:active {
+            transform: translateY(0);
+        }
+
+        .send-button:disabled {
+            background: #444444;
+            border-color: #666666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="title">⚡ DOOMS AI — CHAT</div>
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-text" id="statusText">Initializing</div>
+            </div>
+        </div>
+
+        <!-- Setup Log -->
+        <div class="setup-log" id="setupLog">
+            <!-- Setup messages will be added here -->
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chatMessages">
+            <!-- Messages will be added here -->
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    class="input-field" 
+                    id="messageInput" 
+                    placeholder="Type a message (Enter to send, Shift+Enter for newline)"
+                    rows="1"></textarea>
+                <button class="send-button" id="sendButton">⮕ SEND</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isInitializing = true;
+        let isLoading = false;
+
+        // DOM elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const setupLog = document.getElementById('setupLog');
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            updateSendButton();
+        });
+
+        // Send message on Enter (but not Shift+Enter)
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Send button click
+        sendButton.addEventListener('click', function() {
+            sendMessage();
+        });
+
+        // Simple send function - works for both Enter and Button
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || isInitializing || isLoading) {
+                console.log('Cannot send:', { message: !!message, isInitializing, isLoading });
+                return;
+            }
+            
+            console.log('Sending message:', message);
+            
+            // Clear input
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            
+            // Set loading state
+            isLoading = true;
+            updateSendButton();
+            
+            // Send to QML backend
+            console.log('SEND_MESSAGE:' + message);
+        }
+
+        function updateSendButton() {
+            const hasText = messageInput.value.trim().length > 0;
+            sendButton.disabled = isInitializing || isLoading || !hasText;
+        }
+
+        // QML Bridge Functions - These are called by QML
+        window.setStatus = function(status, text) {
+            console.log("Status update:", status, text);
+            
+            statusDot.className = "status-dot";
+            if (status === "loading") {
+                statusDot.classList.add("loading");
+                isInitializing = true;
+                isLoading = false;
+                messageInput.disabled = true;
+                setupLog.classList.add("visible");
+            } else if (status === "processing") {
+                statusDot.classList.add("loading");
+                isLoading = true;
+                isInitializing = false;
+                messageInput.disabled = true;
+            } else if (status === "error") {
+                statusDot.classList.add("error");
+                isLoading = false;
+                isInitializing = false;
+                messageInput.disabled = false;
+                setupLog.classList.remove("visible");
+            } else if (status === "ready") {
+                isInitializing = false;
+                isLoading = false;
+                messageInput.disabled = false;
+                setupLog.classList.remove("visible");
+            }
+            
+            statusText.textContent = text;
+            updateSendButton();
+        };
+
+        window.addSetupLog = function(message) {
+            setupLog.classList.add('visible');
+            const logItem = document.createElement('div');
+            logItem.className = 'setup-log-item';
+            logItem.textContent = message;
+            setupLog.appendChild(logItem);
+            setupLog.scrollTop = setupLog.scrollHeight;
+        };
+
+        window.addMessage = function(role, text, thinking) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const thinkingToggle = thinking && thinking.length > 0 ? `
+                <div class="thinking-toggle" onclick="toggleThinking(this)">▶</div>
+            ` : '';
+            
+            const thinkingContent = thinking && thinking.length > 0 ? `
+                <div class="thinking-content">
+                    <strong>💭 Thinking:</strong><br>
+                    ${thinking}
+                </div>
+            ` : '';
+            
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    <div class="message-header">
+                        <div class="message-role">
+                            ${role === 'user' ? '👤 YOU' : '🤖 AI'}
+                        </div>
+                        ${thinkingToggle}
+                    </div>
+                    ${thinkingContent}
+                    <div class="message-content">${text}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        window.updateMessage = function(text, thinking) {
+            const messages = chatMessages.querySelectorAll('.message.assistant');
+            if (messages.length > 0) {
+                const lastMessage = messages[messages.length - 1];
+                const contentDiv = lastMessage.querySelector('.message-content');
+                if (contentDiv) {
+                    contentDiv.textContent = text;
+                }
+                
+                if (thinking && thinking.length > 0) {
+                    let thinkingDiv = lastMessage.querySelector('.thinking-content');
+                    if (!thinkingDiv) {
+                        const header = lastMessage.querySelector('.message-header');
+                        if (!header.querySelector('.thinking-toggle')) {
+                            header.innerHTML += '<div class="thinking-toggle" onclick="toggleThinking(this)">▶</div>';
+                        }
+                        
+                        thinkingDiv = document.createElement('div');
+                        thinkingDiv.className = 'thinking-content';
+                        lastMessage.querySelector('.message-bubble').insertBefore(
+                            thinkingDiv, 
+                            lastMessage.querySelector('.message-content')
+                        );
+                    }
+                    thinkingDiv.innerHTML = `<strong>💭 Thinking:</strong><br>${thinking}`;
+                }
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        };
+
+        function toggleThinking(button) {
+            const thinkingContent = button.closest('.message-bubble').querySelector('.thinking-content');
+            if (thinkingContent.classList.contains('visible')) {
+                thinkingContent.classList.remove('visible');
+                button.textContent = '▶';
+            } else {
+                thinkingContent.classList.add('visible');
+                button.textContent = '▼';
+            }
+        }
+
+        // Initialize
+        updateSendButton();
+        console.log('Dooms AI HTML Frontend initialized');
+    </script>
+</body>
+</html>

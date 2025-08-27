@@ -1,24 +1,24 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import org.kde.plasma.plasmoid 2.0
-import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.plasma5support as Plasma5Support
+import QtQuick
+import QtQuick.Layouts
 import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.core as PlasmaCore
+import org.kde.plasma.plasmoid 2.0
+import org.kde.plasma.plasma5support as Plasma5Support
 import QtCore
 
 PlasmoidItem {
     id: root
-    switchWidth: 450
-    switchHeight: 600
+    switchWidth: Kirigami.Units.gridUnit * 28
+    switchHeight: Kirigami.Units.gridUnit * 39
 
     property bool initializing: true
     property bool setupDone: settings.setupDone
     property bool modelReady: false
-    property string statusText: "Initializing…"
+    property string statusText: "Initializing"
     property bool isLoading: false
     property var promptArray: []
     property string ollamaModel: "huihui_ai/qwen3-abliterated:8b"
+    property var webviewItem: null
 
     function shellEscape(str) {
         return "'" + String(str).replace(/'/g, "'\\''") + "'";
@@ -37,22 +37,56 @@ PlasmoidItem {
         exec.connectSource(cmd)
     }
 
+    function updateHtmlStatus(status, text) {
+        if (root.webviewItem) {
+            root.webviewItem.runJavaScript("window.setStatus && window.setStatus('" + status + "', '" + text + "');")
+        }
+    }
+
+    function addHtmlSetupLog(message) {
+        if (root.webviewItem) {
+            const escapedMessage = message.replace(/'/g, "\\'").replace(/"/g, '\\"')
+            root.webviewItem.runJavaScript("window.addSetupLog && window.addSetupLog('" + escapedMessage + "');")
+        }
+    }
+
+    function addHtmlMessage(role, text, thinking) {
+        if (root.webviewItem) {
+            const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+            const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+            root.webviewItem.runJavaScript("window.addMessage && window.addMessage('" + role + "', '" + escapedText + "', '" + escapedThinking + "');")
+        }
+    }
+
+    function updateHtmlMessage(text, thinking) {
+        if (root.webviewItem) {
+            const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+            const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+            root.webviewItem.runJavaScript("window.updateMessage && window.updateMessage('" + escapedText + "', '" + escapedThinking + "');")
+        }
+    }
+
     property string currentOp: ""
     property string currentBuffer: ""
 
     Component.onCompleted: {
-        if (setupDone) {
-            initializing = false
-            modelReady = true
-            statusText = "Ready"
-        } else {
-            setupTimer.start()
-        }
+        console.log("Dooms AI Widget starting...")
+        root.expanded = true
+        
+        // Always check setup quickly on startup
+        quickCheckTimer.start()
+    }
+
+    Timer {
+        id: quickCheckTimer
+        interval: 500
+        repeat: false
+        onTriggered: backend.quickCheck()
     }
 
     Timer {
         id: setupTimer
-        interval: 200
+        interval: 1000
         repeat: false
         onTriggered: backend.checkAndSetup()
     }
@@ -68,7 +102,12 @@ PlasmoidItem {
                 currentBuffer += out
                 if (currentOp === "setup") {
                     const lines = out.split(/\r?\n/).filter(l => l.length)
-                    for (let i = 0; i < lines.length; ++i) setupLogModel.append({ text: lines[i] })
+                    for (let i = 0; i < lines.length; ++i) {
+                        setupLogModel.append({ text: lines[i] })
+                        addHtmlSetupLog(lines[i])
+                    }
+                } else if (currentOp === "quickcheck") {
+                    // Don't show quickcheck output in setup log
                 }
             }
             if (err) console.warn("[" + currentOp + "]", err)
@@ -81,23 +120,19 @@ PlasmoidItem {
         }
     }
 
-    function appendMessage(role, text, thinking) {
-        conversationModel.append({ 
-            role: role, 
-            text: text, 
-            thinking: thinking || "",
-            showThinking: false
-        })
-    }
-
     function requestChat(prompt) {
         if (!prompt || initializing || isLoading) return
-        appendMessage("user", prompt)
+        
+        console.log("Processing chat request:", prompt)
+        
+        // Add user message to HTML
+        addHtmlMessage("user", prompt, "")
+        
         promptArray.push({ role: "user", content: prompt, images: [] })
         isLoading = true
         statusText = "Processing"
+        updateHtmlStatus("processing", "Processing")
 
-        const oldLength = conversationModel.count
         const url = 'http://127.0.0.1:11434/api/chat'
         const payload = JSON.stringify({
             model: root.ollamaModel,
@@ -109,380 +144,135 @@ PlasmoidItem {
         let xhr = new XMLHttpRequest()
         xhr.open('POST', url, true)
         xhr.setRequestHeader('Content-Type', 'application/json')
+        
+        let fullResponse = ""
+        let hasAddedAssistantMessage = false
+        
         xhr.onreadystatechange = function() {
-            const objects = xhr.responseText.split('\n')
-            let text = ''
-            for (let i = 0; i < objects.length; ++i) {
-                const line = objects[i]
-                if (!line) continue
-                try {
-                    const obj = JSON.parse(line)
-                    text += (obj && obj.message && obj.message.content) ? obj.message.content : ''
-                } catch (e) {
-                    // ignore partial JSON chunks
-                }
-            }
-            if (text.length === 0) return
-            
-            // Parse thinking vs final response
-            let thinkingContent = ""
-            let finalContent = text
-            let displayText = text
-            
-            if (text.includes('<thinking>') && text.includes('</thinking>')) {
-                const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/i)
-                const afterThinking = text.split(/<\/thinking>/i)[1]
-                if (thinkingMatch) {
-                    thinkingContent = thinkingMatch[1].trim()
-                    finalContent = afterThinking ? afterThinking.trim() : text
-                    displayText = finalContent || "thinking..."
-                }
-            } else if (text.toLowerCase().includes('thinking:') || text.toLowerCase().includes('let me think')) {
-                const lines = text.split('\n')
-                let isThinkingSection = false
-                let thinkingLines = []
-                let responseLines = []
+            if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
+                const objects = xhr.responseText.split('\n')
+                let currentText = ''
                 
-                for (let line of lines) {
-                    if (line.toLowerCase().includes('thinking:') || line.toLowerCase().includes('let me think')) {
-                        isThinkingSection = true
-                        thinkingLines.push(line)
-                    } else if (line.toLowerCase().includes('answer:') || line.toLowerCase().includes('response:')) {
-                        isThinkingSection = false
-                        responseLines.push(line)
-                    } else if (isThinkingSection) {
-                        thinkingLines.push(line)
-                    } else {
-                        responseLines.push(line)
+                for (let i = 0; i < objects.length; ++i) {
+                    const line = objects[i].trim()
+                    if (!line) continue
+                    try {
+                        const obj = JSON.parse(line)
+                        if (obj && obj.message && obj.message.content) {
+                            currentText += obj.message.content
+                        }
+                    } catch (e) {
+                        // ignore partial JSON chunks
                     }
                 }
                 
-                if (thinkingLines.length > 0) {
-                    thinkingContent = thinkingLines.join('\n').trim()
-                    finalContent = responseLines.join('\n').trim()
-                    displayText = finalContent || "thinking..."
+                if (currentText.length > 0) {
+                    fullResponse = currentText
+                    
+                    // Parse thinking vs final response
+                    let thinkingContent = ""
+                    let finalContent = currentText
+                    let displayText = currentText
+                    
+                    if (currentText.includes('<thinking>') && currentText.includes('</thinking>')) {
+                        const thinkingMatch = currentText.match(/<thinking>([\s\S]*?)<\/thinking>/i)
+                        const afterThinking = currentText.split(/<\/thinking>/i)[1]
+                        if (thinkingMatch) {
+                            thinkingContent = thinkingMatch[1].trim()
+                            finalContent = afterThinking ? afterThinking.trim() : currentText
+                            displayText = finalContent || "thinking..."
+                        }
+                    }
+                    
+                    // Update HTML with live response
+                    if (!hasAddedAssistantMessage) {
+                        addHtmlMessage("assistant", displayText, thinkingContent)
+                        hasAddedAssistantMessage = true
+                    } else {
+                        updateHtmlMessage(displayText, thinkingContent)
+                    }
                 }
             }
-            
-            if (conversationModel.count === oldLength) {
-                conversationModel.append({ 
-                    name: "Assistant", 
-                    role: "assistant", 
-                    text: displayText,
-                    thinking: thinkingContent,
-                    showThinking: false
-                })
-            } else {
-                const lastIdx = oldLength
-                const last = conversationModel.get(lastIdx)
-                last.text = displayText
-                last.thinking = thinkingContent
-                conversationModel.set(lastIdx, last)
-            }
         }
+        
         xhr.onload = function() {
+            console.log("Chat response completed")
             isLoading = false
             statusText = "Ready"
-            const last = conversationModel.get(oldLength)
-            const finalText = last ? last.text : ''
-            if (finalText && finalText.length && finalText !== "thinking...") {
-                promptArray.push({ role: "assistant", content: finalText, images: [] })
+            updateHtmlStatus("ready", "Ready")
+            
+            // Add to conversation history
+            if (fullResponse && fullResponse.length) {
+                promptArray.push({ role: "assistant", content: fullResponse, images: [] })
             }
         }
+        
         xhr.onerror = function() {
+            console.error("Chat request failed")
             isLoading = false
-            statusText = "Ready"
-            appendMessage("assistant", "An error occurred.")
+            statusText = "Error"
+            updateHtmlStatus("error", "Connection failed")
+            addHtmlMessage("assistant", "Error: Could not connect to Ollama. Please check if it's running.", "")
         }
+        
         xhr.send(payload)
     }
 
-    ListModel { id: conversationModel }
     ListModel { id: setupLogModel }
 
-    fullRepresentation: Rectangle {
-        color: "#000000"  // Pure black background
+    // Compact representation (icon only)
+    compactRepresentation: Item {
+        Layout.fillWidth: false
+        Layout.fillHeight: false
+        Layout.minimumWidth: Kirigami.Units.iconSizes.small
+        Layout.minimumHeight: Kirigami.Units.iconSizes.small
         
-        ColumnLayout {
+        Kirigami.Icon {
             anchors.fill: parent
-            spacing: 0
+            source: "applications-internet"
+            active: compactMouse.containsMouse
+        }
+        
+        MouseArea {
+            id: compactMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: root.expanded = !root.expanded
+        }
+    }
 
-            // HEADER - Dark with neon accent
-            Rectangle {
-                Layout.fillWidth: true
-                height: 50
-                color: "#111111"  // Dark gray
-                border.width: 1
-                border.color: "#333333"
-                
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    
-                    Text {
-                        text: "⚡ DOOMS AI"
-                        color: "#00FFFF"  // Cyan neon
-                        font.bold: true
-                        font.pixelSize: 16
-                        font.family: "monospace"
-                        Layout.fillWidth: true
-                    }
-                    
-                    Rectangle {
-                        width: 8
-                        height: 8
-                        radius: 4
-                        color: initializing || isLoading ? "#FF6600" : "#00FF00"  // Orange/Green
-                        
-                        SequentialAnimation on opacity {
-                            running: initializing || isLoading
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.3; duration: 500 }
-                            NumberAnimation { to: 1.0; duration: 500 }
-                        }
-                    }
-                    
-                    Text {
-                        text: statusText
-                        color: "#CCCCCC"  // Light gray
-                        font.pixelSize: 10
-                        font.family: "monospace"
-                    }
-                }
-            }
+    // Full representation (WebView)
+    fullRepresentation: ColumnLayout {
+        id: mainLayout
+        spacing: 0
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 28
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 39
 
-            // SETUP LOG - Terminal style
-            Rectangle {
-                visible: initializing
-                Layout.fillWidth: true
-                height: 100
-                color: "#0A0A0A"  // Almost black
-                border.width: 1
-                border.color: "#333333"
-                
-                ScrollView {
-                    anchors.fill: parent
-                    anchors.margins: 5
+        // WebView loader
+        Loader {
+            id: webviewLoader
+            active: true
+            asynchronous: true
+            source: "WebView.qml"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            
+            onStatusChanged: {
+                if (status === Loader.Error) {
+                    console.error("Failed to load WebView.qml")
+                } else if (status === Loader.Ready) {
+                    console.log("WebView loaded successfully")
+                    root.webviewItem = item.webview
                     
-                    ListView {
-                        model: setupLogModel
-                        delegate: Text {
-                            text: "$ " + model.text
-                            color: "#00FF00"  // Matrix green
-                            font.family: "monospace"
-                            font.pixelSize: 9
-                        }
-                    }
-                }
-            }
-
-            // CHAT AREA - Main conversation
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: "#000000"  // Pure black
-                
-                ScrollView {
-                    anchors.fill: parent
-                    anchors.margins: 5
-                    
-                    ListView {
-                        id: chatView
-                        model: conversationModel
-                        spacing: 10
-                        onCountChanged: positionViewAtEnd()
+                    // Set up message handling
+                    if (item && item.webview) {
+                        // Set initial status
+                        updateHtmlStatus("loading", "Initializing")
                         
-                        delegate: Item {
-                            width: chatView.width
-                            height: messageRect.height + 10
-                            
-                            Rectangle {
-                                id: messageRect
-                                width: Math.min(messageContent.implicitWidth + 20, chatView.width * 0.8)
-                                height: messageContent.implicitHeight + 20
-                                
-                                // Position: user right, AI left
-                                anchors.right: model.role === "user" ? parent.right : undefined
-                                anchors.left: model.role === "user" ? undefined : parent.left
-                                anchors.rightMargin: model.role === "user" ? 10 : 0
-                                anchors.leftMargin: model.role === "user" ? 0 : 10
-                                
-                                // Colors: user blue, AI dark gray
-                                color: model.role === "user" ? "#0066CC" : "#1A1A1A"
-                                border.width: 1
-                                border.color: model.role === "user" ? "#0099FF" : "#444444"
-                                radius: 10
-                                
-                                Column {
-                                    id: messageContent
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.margins: 10
-                                    spacing: 5
-                                    
-                                    // Header with role and thinking toggle
-                                    Row {
-                                        width: parent.width
-                                        spacing: 5
-                                        
-                                        Text {
-                                            text: model.role === "user" ? "👤 YOU" : "🤖 AI"
-                                            color: "#FFFFFF"  // White
-                                            font.bold: true
-                                            font.pixelSize: 10
-                                            font.family: "monospace"
-                                        }
-                                        
-                                        // Thinking toggle button
-                                        Rectangle {
-                                            visible: model.role === "assistant" && model.thinking && model.thinking.length > 0
-                                            width: 20
-                                            height: 15
-                                            color: thinkingMouse.containsMouse ? "#333333" : "#222222"
-                                            border.width: 1
-                                            border.color: "#666666"
-                                            radius: 3
-                                            
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: model.showThinking ? "▼" : "▶"
-                                                color: "#CCCCCC"
-                                                font.pixelSize: 8
-                                            }
-                                            
-                                            MouseArea {
-                                                id: thinkingMouse
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                onClicked: {
-                                                    const item = conversationModel.get(index)
-                                                    item.showThinking = !item.showThinking
-                                                    conversationModel.set(index, item)
-                                                }
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Thinking content (collapsible)
-                                    Rectangle {
-                                        visible: model.role === "assistant" && model.showThinking && model.thinking && model.thinking.length > 0
-                                        width: parent.width
-                                        height: thinkingText.implicitHeight + 10
-                                        color: "#0A0A0A"
-                                        border.width: 1
-                                        border.color: "#666666"
-                                        radius: 5
-                                        
-                                        Text {
-                                            id: thinkingText
-                                            anchors.fill: parent
-                                            anchors.margins: 5
-                                            text: "💭 " + (model.thinking || "")
-                                            color: "#888888"  // Gray
-                                            font.italic: true
-                                            font.pixelSize: 9
-                                            font.family: "monospace"
-                                            wrapMode: Text.Wrap
-                                        }
-                                    }
-                                    
-                                    // Main message text
-                                    Text {
-                                        width: parent.width
-                                        text: model.text
-                                        color: "#FFFFFF"  // White
-                                        font.pixelSize: 11
-                                        font.family: "monospace"
-                                        wrapMode: Text.Wrap
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // INPUT AREA - Bottom section
-            Rectangle {
-                Layout.fillWidth: true
-                height: 60
-                color: "#111111"  // Dark gray
-                border.width: 1
-                border.color: "#333333"
-                
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 8
-                    
-                    // Text input
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        color: "#1A1A1A"  // Darker gray
-                        border.width: 1
-                        border.color: inputArea.activeFocus ? "#0099FF" : "#444444"
-                        radius: 5
-                        
-                        TextArea {
-                            id: inputArea
-                            anchors.fill: parent
-                            anchors.margins: 5
-                            color: "#FFFFFF"  // White text
-                            font.pixelSize: 11
-                            font.family: "monospace"
-                            placeholderText: initializing ? "Setting up..." : (isLoading ? "Processing..." : "Type message...")
-                            placeholderTextColor: "#666666"
-                            background: Rectangle { color: "transparent" }
-                            wrapMode: TextArea.Wrap
-                            enabled: !initializing && !isLoading
-                            
-                            Keys.onReturnPressed: {
-                                if (!(event.modifiers & Qt.ShiftModifier)) {
-                                    event.accepted = true
-                                    const msg = inputArea.text.trim()
-                                    if (msg.length) {
-                                        inputArea.text = ""
-                                        requestChat(msg)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Send button
-                    Rectangle {
-                        width: 80
-                        Layout.fillHeight: true
-                        color: sendMouse.containsMouse ? "#0099FF" : "#0066CC"
-                        border.width: 1
-                        border.color: "#0099FF"
-                        radius: 5
-                        enabled: !initializing && !isLoading && inputArea.text.length > 0
-                        opacity: enabled ? 1.0 : 0.5
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⮕ SEND"
-                            color: "#FFFFFF"
-                            font.bold: true
-                            font.pixelSize: 10
-                            font.family: "monospace"
-                        }
-                        
-                        MouseArea {
-                            id: sendMouse
-                            anchors.fill: parent
-                            enabled: parent.enabled
-                            hoverEnabled: true
-                            onClicked: {
-                                const msg = inputArea.text.trim()
-                                if (msg.length) {
-                                    inputArea.text = ""
-                                    requestChat(msg)
-                                }
-                            }
+                        // Set up message callback for user input
+                        item.messageCallback = function(message) {
+                            console.log("User message from HTML:", message)
+                            requestChat(message)
                         }
                     }
                 }
@@ -493,39 +283,62 @@ PlasmoidItem {
     QtObject {
         id: backend
 
-        function checkAndSetup() {
+        function quickCheck() {
+            console.log("Quick checking Ollama and model...")
             statusText = "Checking"
             initializing = true
+            updateHtmlStatus("loading", "Checking Ollama...")
+            
+            // Check if Ollama is running and model exists
+            runCommand("quickcheck", "bash", ["-c", "curl -s http://127.0.0.1:11434/api/tags | grep -q '" + root.ollamaModel + "' && echo 'READY' || echo 'SETUP_NEEDED'"])
+        }
+
+        function checkAndSetup() {
+            console.log("Starting auto-setup...")
+            statusText = "Setting up"
+            initializing = true
+            updateHtmlStatus("loading", "Setting up")
+            
             setupLogModel.clear()
             runCommand("setup", "bash", [pkgFile("../scripts/setup.sh"), root.ollamaModel])
         }
 
-        function ask(prompt) {
-            if (!modelReady) return
-            statusText = "Thinking"
-            initializing = true
-            runCommand("ask", "bash", [pkgFile("../scripts/ask.sh"), root.ollamaModel, prompt])
-        }
-
         function _onCommandFinished(op, code, stdout) {
+            if (op === "quickcheck") {
+                if (stdout.includes("READY")) {
+                    console.log("Quick check: Everything ready")
+                    modelReady = true
+                    initializing = false
+                    statusText = "Ready"
+                    settings.setupDone = true
+                    updateHtmlStatus("ready", "Ready")
+                    addHtmlMessage("assistant", "Hello! I'm Dooms AI. I'm ready to chat with you. How can I help you today?", "")
+                } else {
+                    console.log("Quick check: Setup needed")
+                    setupTimer.start()
+                }
+                return
+            }
+            
             if (op === "setup") {
                 if (code !== 0) {
+                    console.error("Setup failed with code:", code)
                     statusText = "Setup failed"
                     initializing = false
                     modelReady = false
+                    updateHtmlStatus("error", "Setup failed")
                     return
                 }
+                
+                console.log("Setup completed successfully")
                 modelReady = true
                 initializing = false
                 statusText = "Ready"
                 settings.setupDone = true
-            } else if (op === "ask") {
-                initializing = false
-                if (code !== 0) {
-                    appendMessage("assistant", "Error during inference.")
-                } else {
-                    appendMessage("assistant", stdout)
-                }
+                updateHtmlStatus("ready", "Ready")
+                
+                // Add welcome message
+                addHtmlMessage("assistant", "Hello! I'm Dooms AI. Setup complete! I'm ready to chat with you. How can I help you today?", "")
             }
         }
     }
