@@ -19,6 +19,7 @@ PlasmoidItem {
     property var promptArray: []
     property string ollamaModel: "huihui_ai/qwen3-abliterated:8b"
     property var webviewItem: null
+    property bool webviewReady: false
 
     function shellEscape(str) {
         return "'" + String(str).replace(/'/g, "'\\''") + "'";
@@ -38,31 +39,59 @@ PlasmoidItem {
     }
 
     function updateHtmlStatus(status, text) {
-        if (root.webviewItem) {
-            root.webviewItem.runJavaScript("window.setStatus && window.setStatus('" + status + "', '" + text + "');")
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                root.webviewItem.runJavaScript("if (window.setStatus) window.setStatus('" + status + "', '" + text + "');")
+            } catch (e) {
+                console.warn("Failed to update HTML status:", e)
+            }
         }
     }
 
     function addHtmlSetupLog(message) {
-        if (root.webviewItem) {
-            const escapedMessage = message.replace(/'/g, "\\'").replace(/"/g, '\\"')
-            root.webviewItem.runJavaScript("window.addSetupLog && window.addSetupLog('" + escapedMessage + "');")
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                const escapedMessage = message.replace(/'/g, "\\'").replace(/"/g, '\\"')
+                root.webviewItem.runJavaScript("if (window.addSetupLog) window.addSetupLog('" + escapedMessage + "');")
+            } catch (e) {
+                console.warn("Failed to add setup log:", e)
+            }
+        }
+    }
+
+    function updateHtmlProgress(step, message, percent, speed) {
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                const escapedMessage = message.replace(/'/g, "\\'").replace(/"/g, '\\"')
+                const escapedSpeed = (speed || "").replace(/'/g, "\\'").replace(/"/g, '\\"')
+                root.webviewItem.runJavaScript("if (window.updateProgress) window.updateProgress('" + step + "', '" + escapedMessage + "', " + percent + ", '" + escapedSpeed + "');")
+            } catch (e) {
+                console.warn("Failed to update progress:", e)
+            }
         }
     }
 
     function addHtmlMessage(role, text, thinking) {
-        if (root.webviewItem) {
-            const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
-            const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
-            root.webviewItem.runJavaScript("window.addMessage && window.addMessage('" + role + "', '" + escapedText + "', '" + escapedThinking + "');")
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+                const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+                root.webviewItem.runJavaScript("if (window.addMessage) window.addMessage('" + role + "', '" + escapedText + "', '" + escapedThinking + "');")
+            } catch (e) {
+                console.warn("Failed to add message:", e)
+            }
         }
     }
 
     function updateHtmlMessage(text, thinking) {
-        if (root.webviewItem) {
-            const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
-            const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
-            root.webviewItem.runJavaScript("window.updateMessage && window.updateMessage('" + escapedText + "', '" + escapedThinking + "');")
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                const escapedText = text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+                const escapedThinking = (thinking || "").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n')
+                root.webviewItem.runJavaScript("if (window.updateMessage) window.updateMessage('" + escapedText + "', '" + escapedThinking + "');")
+            } catch (e) {
+                console.warn("Failed to update message:", e)
+            }
         }
     }
 
@@ -73,8 +102,7 @@ PlasmoidItem {
         console.log("Dooms AI Widget starting...")
         root.expanded = true
         
-        // Always check setup quickly on startup
-        quickCheckTimer.start()
+        // Setup will start when WebView is ready
     }
 
     Timer {
@@ -91,6 +119,34 @@ PlasmoidItem {
         onTriggered: backend.checkAndSetup()
     }
 
+    // Progress Monitor Component
+    ProgressMonitor {
+        id: progressMonitor
+        parentRoot: root
+        
+        onProgressUpdated: function(step, message, percent, speed) {
+            updateHtmlProgress(step, message, percent, speed)
+        }
+        
+        onSetupCompleted: {
+            console.log("Setup completed via progress monitor")
+            modelReady = true
+            initializing = false
+            statusText = "Ready"
+            settings.setupDone = true
+            updateHtmlStatus("ready", "Ready")
+            addHtmlMessage("assistant", "Hello! I'm Dooms AI. Setup complete! I'm ready to chat with you. How can I help you today?", "")
+        }
+        
+        onSetupFailed: function(error) {
+            console.error("Setup failed via progress monitor:", error)
+            statusText = "Setup failed"
+            initializing = false
+            modelReady = false
+            updateHtmlStatus("error", "Setup failed: " + error)
+        }
+    }
+
     Plasma5Support.DataSource {
         id: exec
         engine: "executable"
@@ -100,13 +156,7 @@ PlasmoidItem {
             const exitCode = data["exit code"]
             if (out) {
                 currentBuffer += out
-                if (currentOp === "setup") {
-                    const lines = out.split(/\r?\n/).filter(l => l.length)
-                    for (let i = 0; i < lines.length; ++i) {
-                        setupLogModel.append({ text: lines[i] })
-                        addHtmlSetupLog(lines[i])
-                    }
-                } else if (currentOp === "quickcheck") {
+                if (currentOp === "quickcheck") {
                     // Don't show quickcheck output in setup log
                 }
             }
@@ -212,7 +262,7 @@ PlasmoidItem {
             isLoading = false
             statusText = "Error"
             updateHtmlStatus("error", "Connection failed")
-            addHtmlMessage("assistant", "Error: Could not connect to Ollama. Please check if it's running.", "")
+            addHtmlMessage("assistant", "Error: Could not connect to AI service. Please check if it's running.", "")
         }
         
         xhr.send(payload)
@@ -266,6 +316,9 @@ PlasmoidItem {
                     
                     // Set up message handling
                     if (item && item.webview) {
+                        // Mark WebView as ready
+                        root.webviewReady = true
+                        
                         // Set initial status
                         updateHtmlStatus("loading", "Initializing")
                         
@@ -274,6 +327,9 @@ PlasmoidItem {
                             console.log("User message from HTML:", message)
                             requestChat(message)
                         }
+                        
+                        // Now that WebView is ready, start the setup check
+                        quickCheckTimer.start()
                     }
                 }
             }
@@ -284,23 +340,25 @@ PlasmoidItem {
         id: backend
 
         function quickCheck() {
-            console.log("Quick checking Ollama and model...")
+            console.log("Quick checking AI system...")
             statusText = "Checking"
             initializing = true
-            updateHtmlStatus("loading", "Checking Ollama...")
+            updateHtmlStatus("loading", "Checking AI system...")
             
             // Check if Ollama is running and model exists
             runCommand("quickcheck", "bash", ["-c", "curl -s http://127.0.0.1:11434/api/tags | grep -q '" + root.ollamaModel + "' && echo 'READY' || echo 'SETUP_NEEDED'"])
         }
 
         function checkAndSetup() {
-            console.log("Starting auto-setup...")
+            console.log("Starting auto-setup with live progress monitoring...")
             statusText = "Setting up"
             initializing = true
-            updateHtmlStatus("loading", "Setting up")
+            updateHtmlStatus("loading", "Setting up AI system")
             
             setupLogModel.clear()
-            runCommand("setup", "bash", [pkgFile("../scripts/setup.sh"), root.ollamaModel])
+            
+            // Use the new progress monitor instead of direct command execution
+            progressMonitor.startSetup(root.ollamaModel)
         }
 
         function _onCommandFinished(op, code, stdout) {
@@ -318,27 +376,6 @@ PlasmoidItem {
                     setupTimer.start()
                 }
                 return
-            }
-            
-            if (op === "setup") {
-                if (code !== 0) {
-                    console.error("Setup failed with code:", code)
-                    statusText = "Setup failed"
-                    initializing = false
-                    modelReady = false
-                    updateHtmlStatus("error", "Setup failed")
-                    return
-                }
-                
-                console.log("Setup completed successfully")
-                modelReady = true
-                initializing = false
-                statusText = "Ready"
-                settings.setupDone = true
-                updateHtmlStatus("ready", "Ready")
-                
-                // Add welcome message
-                addHtmlMessage("assistant", "Hello! I'm Dooms AI. Setup complete! I'm ready to chat with you. How can I help you today?", "")
             }
         }
     }

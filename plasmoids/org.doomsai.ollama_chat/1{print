@@ -1,0 +1,9 @@
+Checking ollama binary...
+ollama found: /usr/local/bin/ollama
+ollama version is 0.11.7
+
+Checking API...
+API reachable
+
+Checking models...
+NAME    ID    SIZE    MODIFIED 

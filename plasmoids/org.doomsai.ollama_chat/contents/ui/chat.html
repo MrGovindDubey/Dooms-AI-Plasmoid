@@ -79,30 +79,167 @@
             50% { opacity: 0.7; transform: scale(0.9); }
         }
 
-        /* Setup Log */
-        .setup-log {
-            background: #0a0a0a;
+        /* Setup Progress */
+        .setup-progress {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
             border-bottom: 1px solid #333333;
-            padding: 12px;
-            max-height: 120px;
-            overflow-y: auto;
-            font-size: 10px;
-            color: #00ff00;
-            text-shadow: 0 0 5px #00ff00;
+            padding: 20px;
             display: none;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
         }
 
-        .setup-log.visible {
+        .setup-progress.visible {
             display: block;
         }
 
-        .setup-log-item {
-            margin: 2px 0;
+        .progress-header {
+            text-align: center;
+            margin-bottom: 20px;
         }
 
-        .setup-log-item::before {
-            content: "$ ";
+        .progress-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            margin-bottom: 8px;
+        }
+
+        .progress-subtitle {
+            font-size: 12px;
+            color: #888888;
+            font-style: italic;
+        }
+
+        .progress-container {
+            background: #1a1a1a;
+            border: 2px solid #333333;
+            border-radius: 12px;
+            padding: 3px;
+            margin-bottom: 16px;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        .progress-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #00ff00 0%, #00cc00 50%, #009900 100%);
+            border-radius: 8px;
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 255, 0, 0.3);
+        }
+
+        .progress-bar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 11px;
+            color: #cccccc;
+            min-height: 32px;
+            line-height: 1.4;
+        }
+
+        .progress-speed {
             color: #00ff00;
+            font-weight: bold;
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding: 0 8px;
+        }
+
+        .progress-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            position: relative;
+        }
+
+        .progress-step::after {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #333333;
+            z-index: 0;
+        }
+
+        .progress-step:last-child::after {
+            display: none;
+        }
+
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #333333;
+            border: 2px solid #555555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #888888;
+            position: relative;
+            z-index: 1;
+            transition: all 0.3s ease;
+        }
+
+        .step-icon.active {
+            background: #00ff00;
+            border-color: #00cc00;
+            color: #000000;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+            animation: activeStep 1s infinite;
+        }
+
+        .step-icon.completed {
+            background: #0088dd;
+            border-color: #006699;
+            color: #ffffff;
+        }
+
+        @keyframes activeStep {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .step-label {
+            font-size: 9px;
+            color: #666666;
+            margin-top: 6px;
+            text-align: center;
+            transition: color 0.3s ease;
+        }
+
+        .progress-step.active .step-label {
+            color: #00ff00;
+            font-weight: bold;
+        }
+
+        .progress-step.completed .step-label {
+            color: #0088dd;
         }
 
         /* Chat Messages */
@@ -330,9 +467,41 @@
             </div>
         </div>
 
-        <!-- Setup Log -->
-        <div class="setup-log" id="setupLog">
-            <!-- Setup messages will be added here -->
+        <!-- Setup Progress -->
+        <div class="setup-progress" id="setupProgress">
+            <div class="progress-header">
+                <div class="progress-title">🚀 INITIALIZING AI SYSTEM</div>
+                <div class="progress-subtitle">Please wait while we prepare your AI assistant...</div>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            </div>
+            
+            <div class="progress-text" id="progressText">Starting initialization...</div>
+            
+            <div class="progress-steps">
+                <div class="progress-step" id="step-init">
+                    <div class="step-icon">1</div>
+                    <div class="step-label">Initialize</div>
+                </div>
+                <div class="progress-step" id="step-engine">
+                    <div class="step-icon">2</div>
+                    <div class="step-label">Engine</div>
+                </div>
+                <div class="progress-step" id="step-service">
+                    <div class="step-icon">3</div>
+                    <div class="step-label">Service</div>
+                </div>
+                <div class="progress-step" id="step-model">
+                    <div class="step-icon">4</div>
+                    <div class="step-label">Intelligence</div>
+                </div>
+                <div class="progress-step" id="step-complete">
+                    <div class="step-icon">✓</div>
+                    <div class="step-label">Ready</div>
+                </div>
+            </div>
         </div>
 
         <!-- Chat Messages -->
@@ -361,7 +530,9 @@
         // DOM elements
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
-        const setupLog = document.getElementById('setupLog');
+        const setupProgress = document.getElementById('setupProgress');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
         const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
@@ -423,7 +594,7 @@
                 isInitializing = true;
                 isLoading = false;
                 messageInput.disabled = true;
-                setupLog.classList.add("visible");
+                setupProgress.classList.add("visible");
             } else if (status === "processing") {
                 statusDot.classList.add("loading");
                 isLoading = true;
@@ -434,25 +605,83 @@
                 isLoading = false;
                 isInitializing = false;
                 messageInput.disabled = false;
-                setupLog.classList.remove("visible");
+                setupProgress.classList.remove("visible");
             } else if (status === "ready") {
                 isInitializing = false;
                 isLoading = false;
                 messageInput.disabled = false;
-                setupLog.classList.remove("visible");
+                setupProgress.classList.remove("visible");
             }
             
             statusText.textContent = text;
             updateSendButton();
         };
 
+        // Enhanced progress update function with download speed
+        window.updateProgress = function(step, message, percent, speed) {
+            console.log("Progress update:", step, message, percent, speed);
+            
+            // Update progress bar
+            progressBar.style.width = percent + '%';
+            
+            // Update progress text with speed if available
+            let displayMessage = message;
+            if (speed && speed.trim() !== '') {
+                displayMessage += '<br><span class="progress-speed">📡 ' + speed + '</span>';
+            }
+            progressText.innerHTML = displayMessage;
+            
+            // Update step indicators
+            const steps = ['init', 'engine', 'service', 'model', 'complete'];
+            const currentStepIndex = steps.indexOf(step);
+            
+            steps.forEach((stepName, index) => {
+                const stepElement = document.getElementById('step-' + stepName);
+                if (!stepElement) return;
+                
+                const icon = stepElement.querySelector('.step-icon');
+                
+                if (index < currentStepIndex) {
+                    // Completed steps
+                    stepElement.className = 'progress-step completed';
+                    icon.className = 'step-icon completed';
+                    icon.textContent = '✓';
+                } else if (index === currentStepIndex) {
+                    // Current step
+                    stepElement.className = 'progress-step active';
+                    icon.className = 'step-icon active';
+                    // Show original number for active step
+                    if (stepName === 'init') icon.textContent = '1';
+                    else if (stepName === 'engine') icon.textContent = '2';
+                    else if (stepName === 'service') icon.textContent = '3';
+                    else if (stepName === 'model') icon.textContent = '4';
+                    else if (stepName === 'complete') icon.textContent = '✓';
+                } else {
+                    // Future steps
+                    stepElement.className = 'progress-step';
+                    icon.className = 'step-icon';
+                    // Show original numbers for future steps
+                    if (stepName === 'init') icon.textContent = '1';
+                    else if (stepName === 'engine') icon.textContent = '2';
+                    else if (stepName === 'service') icon.textContent = '3';
+                    else if (stepName === 'model') icon.textContent = '4';
+                    else if (stepName === 'complete') icon.textContent = '✓';
+                }
+            });
+            
+            // Handle completion
+            if (step === 'complete' && percent >= 100) {
+                setTimeout(() => {
+                    setupProgress.classList.remove('visible');
+                    isInitializing = false;
+                    updateSendButton();
+                }, 2000);
+            }
+        };
+
+        // Legacy setup log function (for compatibility)
         window.addSetupLog = function(message) {
-            setupLog.classList.add('visible');
-            const logItem = document.createElement('div');
-            logItem.className = 'setup-log-item';
-            logItem.textContent = message;
-            setupLog.appendChild(logItem);
-            setupLog.scrollTop = setupLog.scrollHeight;
+            console.log("Setup log:", message);
         };
 
         window.addMessage = function(role, text, thinking) {
