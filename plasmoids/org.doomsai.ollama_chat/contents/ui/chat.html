@@ -624,10 +624,27 @@
             // Update progress bar
             progressBar.style.width = percent + '%';
             
-            // Update progress text with speed if available
-            let displayMessage = message;
-            if (speed && speed.trim() !== '') {
-                displayMessage += '<br><span class="progress-speed">📡 ' + speed + '</span>';
+            // Normalize message to show only total size, percentage, and speed
+            const originalMessage = message || '';
+
+            // Derive speed from message suffix like "[...]" if not provided separately
+            let derivedSpeed = (speed || '').trim();
+            const speedBracketMatch = originalMessage.match(/\s*\[([^\]]+)\]\s*$/);
+            if (!derivedSpeed && speedBracketMatch) {
+                derivedSpeed = speedBracketMatch[1].trim();
+            }
+
+            // Clean message: remove trailing speed bracket and collapse downloaded/total to only total
+            let cleanedMessage = originalMessage
+                // remove trailing [speed]
+                .replace(/\s*\[[^\]]+\]\s*$/, '')
+                // replace "<downloaded>/<total>" with "<total>"
+                .replace(/([0-9]+(?:\.[0-9]+)?\s*[KMGT]?B)\s*\/\s*([0-9]+(?:\.[0-9]+)?\s*[KMGT]?B)/gi, '$2');
+
+            // Build final display with speed on a separate line if available
+            let displayMessage = cleanedMessage;
+            if (derivedSpeed && derivedSpeed.trim() !== '') {
+                displayMessage += '<br><span class="progress-speed">📡 ' + derivedSpeed + '</span>';
             }
             progressText.innerHTML = displayMessage;
             
