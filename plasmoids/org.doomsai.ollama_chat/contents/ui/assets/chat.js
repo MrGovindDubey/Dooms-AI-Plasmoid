@@ -7,6 +7,13 @@
   let statusDot, statusText, setupProgress, progressBar, progressText,
       chatMessages, messageInput, sendButton, githubLink;
 
+  // History management variables
+  let currentConversation = [];
+  let historyData = [];
+  let isHistoryVisible = false;
+  let historyButton, historyPanel, historyOverlay, historyList, historySearchInput,
+      saveCurrentBtn, clearHistoryBtn, historyCloseBtn;
+
   function cacheDom() {
     statusDot = document.getElementById('statusDot');
     statusText = document.getElementById('statusText');
@@ -83,6 +90,195 @@
         try { window.open(githubLink.href, '_blank'); } catch (e) {}
       });
     }
+  }
+
+  // History Management Functions
+  function initHistoryElements() {
+    historyButton = document.getElementById('historyButton');
+    historyPanel = document.getElementById('historyPanel');
+    historyOverlay = document.getElementById('historyOverlay');
+    historyList = document.getElementById('historyList');
+    historySearchInput = document.getElementById('historySearchInput');
+    saveCurrentBtn = document.getElementById('saveCurrentBtn');
+    clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    historyCloseBtn = document.getElementById('historyCloseBtn');
+  }
+
+  function initHistoryListeners() {
+    if (historyButton) {
+      historyButton.addEventListener('click', toggleHistory);
+    }
+    if (historyCloseBtn) {
+      historyCloseBtn.addEventListener('click', closeHistory);
+    }
+    if (historyOverlay) {
+      historyOverlay.addEventListener('click', closeHistory);
+    }
+    if (saveCurrentBtn) {
+      saveCurrentBtn.addEventListener('click', saveCurrentConversation);
+    }
+    if (clearHistoryBtn) {
+      clearHistoryBtn.addEventListener('click', clearAllHistory);
+    }
+    if (historySearchInput) {
+      historySearchInput.addEventListener('input', filterHistory);
+    }
+  }
+
+  function toggleHistory() {
+    isHistoryVisible = !isHistoryVisible;
+    if (isHistoryVisible) {
+      loadHistoryData();
+      renderHistoryList();
+      historyPanel.classList.add('visible');
+      historyOverlay.classList.add('visible');
+    } else {
+      closeHistory();
+    }
+  }
+
+  function closeHistory() {
+    isHistoryVisible = false;
+    historyPanel.classList.remove('visible');
+    historyOverlay.classList.remove('visible');
+  }
+
+  function saveCurrentConversation() {
+    if (currentConversation.length === 0) {
+      console.log('No conversation to save');
+      return;
+    }
+
+    const now = new Date();
+    const timestamp = now.toISOString();
+    const dateStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+    
+    // Generate title from first user message
+    const firstUserMessage = currentConversation.find(msg => msg.role === 'user');
+    const title = firstUserMessage ? 
+      firstUserMessage.content.substring(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '') :
+      'Untitled Conversation';
+
+    const conversationData = {
+      id: 'conv_' + Date.now(),
+      title: title,
+      timestamp: timestamp,
+      dateStr: dateStr,
+      messages: [...currentConversation],
+      messageCount: currentConversation.length
+    };
+
+    // Send to QML backend to save
+    console.log('SAVE_HISTORY:' + JSON.stringify(conversationData));
+    
+    // Add to local history data
+    historyData.unshift(conversationData);
+    renderHistoryList();
+    
+    console.log('Conversation saved:', title);
+  }
+
+  function clearAllHistory() {
+    if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+      historyData = [];
+      console.log('CLEAR_HISTORY:');
+      renderHistoryList();
+      console.log('All history cleared');
+    }
+  }
+
+  function loadHistoryData() {
+    // Request history from QML backend
+    console.log('LOAD_HISTORY:');
+  }
+
+  function loadConversation(conversationId) {
+    const conversation = historyData.find(conv => conv.id === conversationId);
+    if (!conversation) return;
+
+    // Clear current chat
+    if (chatMessages) {
+      chatMessages.innerHTML = '';
+    }
+    
+    // Load conversation messages
+    currentConversation = [...conversation.messages];
+    
+    // Render messages
+    conversation.messages.forEach(msg => {
+      window.addMessage(msg.role, msg.content, msg.thinking || '');
+    });
+
+    closeHistory();
+    console.log('Conversation loaded:', conversation.title);
+  }
+
+  function deleteConversation(conversationId) {
+    if (confirm('Are you sure you want to delete this conversation?')) {
+      historyData = historyData.filter(conv => conv.id !== conversationId);
+      console.log('DELETE_HISTORY:' + conversationId);
+      renderHistoryList();
+    }
+  }
+
+  function filterHistory() {
+    const searchTerm = historySearchInput.value.toLowerCase();
+    renderHistoryList(searchTerm);
+  }
+
+  function renderHistoryList(searchTerm = '') {
+    if (!historyList) return;
+
+    const filteredHistory = searchTerm ? 
+      historyData.filter(conv => 
+        conv.title.toLowerCase().includes(searchTerm) ||
+        conv.messages.some(msg => msg.content.toLowerCase().includes(searchTerm))
+      ) : historyData;
+
+    if (filteredHistory.length === 0) {
+      historyList.innerHTML = `
+        <div class="history-empty">
+          <div class="history-empty-icon">📝</div>
+          <div class="history-empty-text">${searchTerm ? 'No matching conversations' : 'No chat history yet'}</div>
+          <div class="history-empty-subtitle">${searchTerm ? 'Try a different search term' : 'Start a conversation to save it here'}</div>
+        </div>`;
+      return;
+    }
+
+    historyList.innerHTML = filteredHistory.map(conv => `
+      <div class="history-item" onclick="loadConversation('${conv.id}')">
+        <div class="history-item-header">
+          <div class="history-item-title">${conv.title}</div>
+          <div class="history-item-date">${conv.dateStr}</div>
+        </div>
+        <div class="history-item-preview">${getConversationPreview(conv)}</div>
+        <div class="history-item-actions">
+          <button class="history-item-action" onclick="event.stopPropagation(); deleteConversation('${conv.id}')" title="Delete">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+              <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="history-item-stats">
+          <div class="history-item-stat">
+            <span>💬 ${conv.messageCount} messages</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function getConversationPreview(conversation) {
+    const firstUserMsg = conversation.messages.find(msg => msg.role === 'user');
+    const firstAiMsg = conversation.messages.find(msg => msg.role === 'assistant');
+    
+    if (firstUserMsg && firstAiMsg) {
+      return `You: ${firstUserMsg.content.substring(0, 50)}... AI: ${firstAiMsg.content.substring(0, 50)}...`;
+    } else if (firstUserMsg) {
+      return `You: ${firstUserMsg.content.substring(0, 100)}...`;
+    }
+    return 'Empty conversation';
   }
 
   // Expose bridge functions expected by QML
@@ -196,6 +392,14 @@
       return;
     }
 
+    // Add to current conversation
+    currentConversation.push({
+      role: role,
+      content: text,
+      thinking: thinking || '',
+      timestamp: new Date().toISOString()
+    });
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
 
@@ -236,7 +440,18 @@
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
       const contentDiv = lastMessage.querySelector('.message-content');
-      if (contentDiv) { contentDiv.textContent = text; }
+      if (contentDiv) { 
+        contentDiv.textContent = text; 
+        
+        // Update current conversation
+        if (currentConversation.length > 0) {
+          const lastConvMessage = currentConversation[currentConversation.length - 1];
+          if (lastConvMessage.role === 'assistant') {
+            lastConvMessage.content = text;
+            lastConvMessage.thinking = thinking || '';
+          }
+        }
+      }
 
       if (thinking && thinking.length > 0) {
         let thinkingDiv = lastMessage.querySelector('.thinking-content');
@@ -270,9 +485,33 @@
     }
   };
 
+  // Expose history functions to QML
+  window.setHistoryData = function(data) {
+    try {
+      historyData = JSON.parse(data);
+      renderHistoryList();
+    } catch (e) {
+      console.error('Failed to parse history data:', e);
+      historyData = [];
+    }
+  };
+
+  window.clearCurrentConversation = function() {
+    currentConversation = [];
+    if (chatMessages) {
+      chatMessages.innerHTML = '';
+    }
+  };
+
+  // Make functions globally accessible
+  window.loadConversation = loadConversation;
+  window.deleteConversation = deleteConversation;
+
   document.addEventListener('DOMContentLoaded', function() {
     cacheDom();
     initListeners();
+    initHistoryElements();
+    initHistoryListeners();
     updateSendButton();
     console.log('Dooms AI HTML Frontend initialized');
   });

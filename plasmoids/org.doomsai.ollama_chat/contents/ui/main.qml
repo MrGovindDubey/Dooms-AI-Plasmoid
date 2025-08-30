@@ -20,6 +20,7 @@ PlasmoidItem {
     property string ollamaModel: "huihui_ai/qwen3-abliterated:8b"
     property var webviewItem: null
     property bool webviewReady: false
+    property string historyDir: ""
 
     function shellEscape(str) {
         return "'" + String(str).replace(/'/g, "'\\''") + "'";
@@ -99,10 +100,13 @@ PlasmoidItem {
     property string currentBuffer: ""
 
     Component.onCompleted: {
-        console.log("Dooms AI Widget starting...")
-        root.expanded = true
-        
-        // Setup will start when WebView is ready
+    console.log("Dooms AI Widget starting...")
+    root.expanded = true
+    
+    // Initialize history directory
+    initializeHistoryDirectory()
+    
+    // Setup will start when WebView is ready
     }
 
     Timer {
@@ -268,6 +272,81 @@ PlasmoidItem {
         xhr.send(payload)
     }
 
+    // History Management Functions
+    function initializeHistoryDirectory() {
+        // Set history directory path using environment variable
+        runCommand("get_home_dir", "bash", ["-c", "echo $HOME"])
+    }
+
+    function saveConversationHistory(conversationData) {
+        if (!conversationData || !conversationData.id) {
+            console.error("Invalid conversation data for saving")
+            return
+        }
+
+        const filename = conversationData.id + ".json"
+        const filepath = historyDir + "/" + filename
+        const jsonData = JSON.stringify(conversationData, null, 2)
+        
+        // Escape the JSON data for shell command
+        const escapedData = jsonData.replace(/'/g, "'\\''")
+        
+        // Save to file using echo command
+        runCommand("save_history", "bash", ["-c", "echo '" + escapedData + "' > '" + filepath + "'"])
+        console.log("Conversation saved:", filename)
+    }
+
+    function loadConversationHistory() {
+        // List all JSON files in history directory
+        runCommand("load_history", "bash", ["-c", "find '" + historyDir + "' -name '*.json' -type f 2>/dev/null | head -50"])
+    }
+
+    function deleteConversationHistory(conversationId) {
+        if (!conversationId) return
+        
+        const filename = conversationId + ".json"
+        const filepath = historyDir + "/" + filename
+        
+        runCommand("delete_history", "rm", ["-f", filepath])
+        console.log("Conversation deleted:", filename)
+    }
+
+    function clearAllHistory() {
+        runCommand("clear_history", "bash", ["-c", "rm -f '" + historyDir + "'/*.json"])
+        console.log("All history cleared")
+    }
+
+    function sendHistoryToHtml(historyArray) {
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                const escapedData = JSON.stringify(historyArray).replace(/'/g, "\\'").replace(/"/g, '\\"')
+                root.webviewItem.runJavaScript("if (window.setHistoryData) window.setHistoryData('" + escapedData + "');")
+            } catch (e) {
+                console.warn("Failed to send history to HTML:", e)
+            }
+        }
+    }
+
+    function clearCurrentConversation() {
+        promptArray = []
+        if (root.webviewItem && root.webviewReady) {
+            try {
+                root.webviewItem.runJavaScript("if (window.clearCurrentConversation) window.clearCurrentConversation();")
+            } catch (e) {
+                console.warn("Failed to clear current conversation in HTML:", e)
+            }
+        }
+    }
+
+    function loadSpecificConversation(conversationId) {
+        if (!conversationId) return
+        
+        const filename = conversationId + ".json"
+        const filepath = historyDir + "/" + filename
+        
+        runCommand("load_specific_conversation", "cat", [filepath])
+    }
+
     ListModel { id: setupLogModel }
 
     // Compact representation (icon only)
@@ -318,6 +397,9 @@ PlasmoidItem {
                     if (item && item.webview) {
                         // Mark WebView as ready
                         root.webviewReady = true
+                        
+                        // Pass root reference to WebView
+                        item.rootItem = root
                         
                         // Set initial status
                         updateHtmlStatus("loading", "Initializing")
@@ -376,7 +458,130 @@ PlasmoidItem {
                     setupTimer.start()
                 }
                 return
+            } else if (op === "get_home_dir") {
+                if (code === 0 && stdout) {
+                    const homeDir = stdout.trim()
+                    historyDir = homeDir + "/.local/share/plasma/plasmoids/org.doomsai.ollama_chat/history"
+                    console.log("History directory set to:", historyDir)
+                    
+                    // Create history directory if it doesn't exist
+                    runCommand("create_history_dir", "mkdir", ["-p", historyDir])
+                } else {
+                    console.warn("Failed to get home directory")
+                }
+                return
+            } else if (op === "create_history_dir") {
+                if (code === 0) {
+                    console.log("History directory created successfully")
+                } else {
+                    console.warn("Failed to create history directory")
+                }
+                return
+            } else if (op === "save_history") {
+                if (code === 0) {
+                    console.log("Conversation saved successfully")
+                } else {
+                    console.warn("Failed to save conversation")
+                }
+                return
+            } else if (op === "load_history") {
+                if (code === 0 && stdout) {
+                    // Process the list of history files
+                    const historyFiles = stdout.split('\n').filter(f => f.trim().length > 0)
+                    loadHistoryFiles(historyFiles)
+                } else {
+                    console.log("No history files found or error loading history")
+                    sendHistoryToHtml([])
+                }
+                return
+            } else if (op === "delete_history") {
+                if (code === 0) {
+                    console.log("Conversation deleted successfully")
+                    // Reload history after deletion
+                    loadConversationHistory()
+                } else {
+                    console.warn("Failed to delete conversation")
+                }
+                return
+            } else if (op === "clear_history") {
+                if (code === 0) {
+                    console.log("All history cleared successfully")
+                    sendHistoryToHtml([])
+                } else {
+                    console.warn("Failed to clear history")
+                }
+                return
+            } else if (op.startsWith("load_history_file_")) {
+                // Handle individual history file loading
+                const filename = op.replace("load_history_file_", "")
+                if (code === 0 && stdout) {
+                    try {
+                        const conversationData = JSON.parse(stdout)
+                        backend.historyData = backend.historyData || []
+                        backend.historyData.push(conversationData)
+                        
+                        // Check if this is the last file to load
+                        backend.loadedFiles = (backend.loadedFiles || 0) + 1
+                        if (backend.loadedFiles >= backend.totalFiles) {
+                            // Sort by timestamp (newest first)
+                            backend.historyData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                            sendHistoryToHtml(backend.historyData)
+                            backend.historyData = []
+                            backend.loadedFiles = 0
+                            backend.totalFiles = 0
+                        }
+                    } catch (e) {
+                        console.warn("Failed to parse history file:", filename, e)
+                    }
+                }
+                return
+            } else if (op === "load_specific_conversation") {
+                if (code === 0 && stdout) {
+                    try {
+                        const conversationData = JSON.parse(stdout)
+                        console.log("Loading specific conversation:", conversationData.title)
+                        
+                        // Clear current conversation
+                        clearCurrentConversation()
+                        
+                        // Load conversation messages into promptArray
+                        promptArray = []
+                        if (conversationData.messages) {
+                            conversationData.messages.forEach(function(msg) {
+                                promptArray.push({
+                                    role: msg.role,
+                                    content: msg.content,
+                                    images: []
+                                })
+                            })
+                        }
+                        
+                        console.log("Conversation loaded with", promptArray.length, "messages")
+                    } catch (e) {
+                        console.error("Failed to parse specific conversation:", e)
+                    }
+                } else {
+                    console.warn("Failed to load specific conversation")
+                }
+                return
             }
+        }
+
+        function loadHistoryFiles(filePaths) {
+            if (!filePaths || filePaths.length === 0) {
+                sendHistoryToHtml([])
+                return
+            }
+
+            backend.historyData = []
+            backend.loadedFiles = 0
+            backend.totalFiles = filePaths.length
+
+            // Load each history file
+            filePaths.forEach(function(filepath, index) {
+                const filename = filepath.split('/').pop()
+                runCommand("load_history_file_" + filename, "cat", [filepath])
+            })
         }
     }
 
