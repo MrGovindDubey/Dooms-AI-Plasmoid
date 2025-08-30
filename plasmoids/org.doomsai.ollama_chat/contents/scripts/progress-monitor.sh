@@ -1,4 +1,4 @@
-load the#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 MODEL="${1:-huihui_ai/qwen3-abliterated:8b}"
@@ -160,7 +160,7 @@ if ! have_model; then
     --data "{\"name\":\"${MODEL}\"}" \
     http://127.0.0.1:11434/api/pull | while IFS= read -r line; do
     # Extract fields from JSON line without requiring jq
-    status=$(echo "$line" | sed -n 's/.*"status":"\([^"}]*\)".*/\1/p')
+    status=$(echo "$line" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')
     completed=$(echo "$line" | sed -n 's/.*"completed":\([0-9][0-9]*\).*/\1/p')
     total=$(echo "$line" | sed -n 's/.*"total":\([0-9][0-9]*\).*/\1/p')
 

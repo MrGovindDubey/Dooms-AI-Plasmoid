@@ -17,7 +17,7 @@ Item {
     WebEngineView {
         id: webview
         anchors.fill: parent
-        url: Qt.resolvedUrl("chat.html")  // Load our local HTML file
+        url: Qt.resolvedUrl("chat.html?v=9")  // Load our local HTML file with cache-busting
         
         onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
             console.log("WebView JS:", message)
@@ -69,7 +69,7 @@ Item {
             id: webProfile
             storageName: "dooms-ai-chat"
             offTheRecord: false
-            httpCacheType: WebEngineProfile.DiskHttpCache
+            httpCacheType: WebEngineProfile.NoCache
             persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
         }
         
