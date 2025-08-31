@@ -413,6 +413,19 @@ body {
 
 .thinking-toggle:hover { background: rgba(255, 255, 255, 0.2); transform: scale(1.1); }
 
+/* Compact visible hint for hidden chain-of-thought */
+.thinking-summary {
+  display: inline-block;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #bbbbbb;
+  opacity: 0.9;
+  cursor: pointer;
+  user-select: none;
+}
+.message.assistant .thinking-summary { color: #cccccc; }
+.thinking-summary:hover { text-decoration: underline; opacity: 1; }
+
 .thinking-content {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid #444444;

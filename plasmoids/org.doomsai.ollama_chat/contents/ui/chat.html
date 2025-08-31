@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dooms AI Chat</title>
-    <link rel="stylesheet" href="assets/chat.css?v=6">
+    <link rel="stylesheet" href="assets/chat.css?v=7">
 </head>
 <body>
     <div class="chat-container">
@@ -102,6 +102,20 @@
         </div>
     </div>
 
-    <script src="assets/chat.js?v=6"></script>
+    <script src="assets/chat.js?v=7"></script>
+    <script>
+      (function(){
+        try{
+          const params = new URLSearchParams(location.search);
+          if (params.get('demo') === '1') {
+            setTimeout(function(){
+              if (window.addMessage) {
+                window.addMessage('assistant', 'Here is the visible result. Click the arrow or the “thinking...” hint to expand.', 'Okay, the user said "Hello". I should respond in a friendly and welcoming manner. Let me make sure to acknowledge their greeting and offer assistance. Maybe add an emoji to keep it approachable. Let me check if there\'s anything specific they might need help with. Keep it open-ended so they feel comfortable asking anything. Alright, that should work.');
+              }
+            }, 150);
+          }
+        }catch(e){}
+      })();
+    </script>
 </body>
 </html>
