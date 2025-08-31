@@ -14,7 +14,8 @@ PlasmoidItem {
     property bool initializing: true
     property bool setupDone: settings.setupDone
     property bool modelReady: false
-    property string stat    property string statusState: "loading"
+    property string statusText: "Initializing"
+    property string statusState: "loading"
     property bool isLoading: false
     property bool startupInitiated: false
     property var promptArray: []
