@@ -1,0 +1,19 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Id": "org.doomsai.chat",
+    "Name": "Dooms AI - Chat",
+    "Description": "AI chat widget. Performs one-time background setup.",
+    "Icon": "contents/logo.svg",
+    "Version": "0.1.0",
+    "License": "GPL-3.0-or-later",
+    "Website": "",
+    "Authors": [ { "Name": "Dooms AI" } ],
+    "Category": "Online Services",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API": "declarativeappletscript",
+  "X-Plasma-MainScript": "contents/ui/main.qml",
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "FormFactors": [ "desktop" ]
+}
