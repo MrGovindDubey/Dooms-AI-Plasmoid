@@ -23,6 +23,7 @@ PlasmoidItem {
     property var webviewItem: null
     property bool webviewReady: false
     property string historyDir: ""
+    property var currentXHR: null
 
     function shellEscape(str) {
         return "'" + String(str).replace(/'/g, "'\\''") + "'";
@@ -205,8 +206,16 @@ PlasmoidItem {
         })
 
         let xhr = new XMLHttpRequest()
+        root.currentXHR = xhr
         xhr.open('POST', url, true)
         xhr.setRequestHeader('Content-Type', 'application/json')
+        xhr.onabort = function() {
+            console.log("Chat request aborted")
+            isLoading = false
+            statusText = "Ready"
+            statusState = "ready"
+            updateHtmlStatus("ready", "Ready")
+        }
         
         let fullResponse = ""
         let hasAddedAssistantMessage = false
@@ -272,6 +281,7 @@ PlasmoidItem {
             if (fullResponse && fullResponse.length) {
                 promptArray.push({ role: "assistant", content: fullResponse, images: [] })
             }
+            root.currentXHR = null
         }
         
         xhr.onerror = function() {
@@ -281,6 +291,7 @@ PlasmoidItem {
             statusState = "error"
             updateHtmlStatus("error", "Connection failed")
             addHtmlMessage("assistant", "Error: Could not connect to AI service. Please check if it's running.", "")
+            root.currentXHR = null
         }
         
         xhr.send(payload)
@@ -342,6 +353,18 @@ PlasmoidItem {
     }
 
     function clearCurrentConversation() {
+        // Abort any in-flight chat request
+        if (root.currentXHR) {
+            try { root.currentXHR.abort() } catch (e) {}
+            root.currentXHR = null
+        }
+        // Reset backend state
+        isLoading = false
+        statusText = "Ready"
+        statusState = "ready"
+        updateHtmlStatus("ready", "Ready")
+
+        // Clear prompts and HTML conversation
         promptArray = []
         if (root.webviewItem && root.webviewReady) {
             try {
