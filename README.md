@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="docs/images/logo.png" alt="DOOMS AI Logo" width="128" height="128" />
+  <img src="https://github.com/MrGovindDubey/Dooms-AI-Plasmoid/blob/Master/plasmoids/org.doomsai.chat/contents/logo.png?raw=true" alt="DOOMS AI Logo" width="128" height="128" />
 </p>
-<h1 align="center">DOOMS AI — Plasmoid (Chat)</h1>
+<h1 align="center">DOOMS AI — Plasmoid </h1>
 <p align="center">Local, private, beautiful AI chat for KDE Plasma.</p>
 
 <p align="center">
