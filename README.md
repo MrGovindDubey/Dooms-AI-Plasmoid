@@ -129,7 +129,7 @@ The system initializes with real-time progress display:
   <em>Combat-ready chat interface with archive access</em>
 </p>
 
-> **Note**: Screenshots will auto-display once added to `docs/images/`
+
 
 ---
 
