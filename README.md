@@ -117,12 +117,14 @@ The system initializes with real-time progress display:
 ## 📸 Intelligence Reports
 
 <p align="center">
-  <img src="docs/images/screenshot-setup.png" alt="Setup Progress" width="720" />
+  <img src="https://github.com/user-attachments/assets/266e8100-6dc9-4500-b38c-6e8ae383331b" alt="Setup Progress" width="720" />
+
+  
   <em>Initial deployment with real-time progress monitoring</em>
 </p>
 
 <p align="center">
-  <img src="docs/images/screenshot-chat.png" alt="Chat Interface" width="720" />
+  <img src="https://github.com/user-attachments/assets/ba5f3793-30cf-4abe-9bf2-10f28362d6ab" alt="Chat Interface" width="720" />
   <em>Combat-ready chat interface with archive access</em>
 </p>
 
