@@ -54,6 +54,10 @@
 ---
 
 ## 🪜 Installation 
+#### Store :  https://www.pling.com/p/2317840
+
+OR 
+
 ```bash
 git clone https://github.com/MrGovindDubey/Dooms-AI-Plasmoid.git
 cd Dooms-AI-Plasmoid
