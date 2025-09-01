@@ -3,6 +3,14 @@
   let isInitializing = true;
   let isLoading = false;
 
+  // Persistence keys and restore flag
+  const STORAGE_KEYS = {
+    conversation: 'doomsai.chat.currentConversation',
+    input: 'doomsai.chat.input',
+    status: 'doomsai.chat.status'
+  };
+  let isRestoring = false;
+
   // DOM elements (queried after DOMContentLoaded)
   let statusDot, statusText, setupProgress, progressBar, progressText,
       chatMessages, messageInput, sendButton, githubLink;
@@ -162,7 +170,10 @@
   function initListeners() {
     ensureDom();
     if (messageInput) {
-      messageInput.addEventListener('input', autoResizeTextarea);
+      messageInput.addEventListener('input', function(ev){
+        autoResizeTextarea(ev);
+        persistInput();
+      });
       messageInput.addEventListener('keydown', onKeydown);
     }
     if (sendButton) {
@@ -174,6 +185,56 @@
         try { window.open(githubLink.href, '_blank'); } catch (e) {}
       });
     }
+  }
+
+  // Persistence helpers
+  function persistConversation() {
+    try { localStorage.setItem(STORAGE_KEYS.conversation, JSON.stringify(currentConversation)); } catch (e) {}
+  }
+  function persistInput() {
+    try { if (messageInput) localStorage.setItem(STORAGE_KEYS.input, messageInput.value); } catch (e) {}
+  }
+  function persistStatus(status, text) {
+    try { localStorage.setItem(STORAGE_KEYS.status, JSON.stringify({ status: status, text: text })); } catch (e) {}
+  }
+  function restoreFromStorage() {
+    // Restore conversation
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.conversation);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved) && saved.length > 0) {
+          if (chatMessages) { chatMessages.innerHTML = ''; }
+          isRestoring = true;
+          saved.forEach(msg => {
+            window.addMessage(msg.role, msg.content, msg.thinking || '');
+          });
+          isRestoring = false;
+          currentConversation = saved;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Restore input draft
+    try {
+      const draft = localStorage.getItem(STORAGE_KEYS.input);
+      if (draft !== null && messageInput) {
+        messageInput.value = draft;
+        // Trigger resize and button enable based on restored draft
+        autoResizeTextarea({ target: messageInput });
+      }
+    } catch (e) { /* ignore */ }
+
+    // Restore last known status
+    try {
+      const rawStatus = localStorage.getItem(STORAGE_KEYS.status);
+      if (rawStatus) {
+        const s = JSON.parse(rawStatus);
+        if (s && s.status && typeof window.setStatus === 'function') {
+          window.setStatus(s.status, s.text || '');
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   // History Management Functions
@@ -284,14 +345,17 @@
     if (chatMessages) {
       chatMessages.innerHTML = '';
     }
-    
-    // Load conversation messages
-    currentConversation = [...conversation.messages];
-    
-    // Render messages
+
+    // Render messages without duplicating state
+    isRestoring = true;
     conversation.messages.forEach(msg => {
       window.addMessage(msg.role, msg.content, msg.thinking || '');
     });
+    isRestoring = false;
+
+    // Set current conversation to loaded one and persist
+    currentConversation = [...conversation.messages];
+    persistConversation();
 
     closeHistory();
     console.log('Conversation loaded:', conversation.title);
@@ -401,6 +465,8 @@
 
     statusText.textContent = text;
     updateSendButton();
+    // Persist status so reopening the plasmoid restores UI state
+    persistStatus(status, text);
   };
 
   window.updateProgress = function(step, message, percent, speed) {
@@ -476,13 +542,15 @@
       return;
     }
 
-    // Add to current conversation
-    currentConversation.push({
-      role: role,
-      content: text,
-      thinking: thinking || '',
-      timestamp: new Date().toISOString()
-    });
+    // Add to current conversation unless we're restoring
+    if (!isRestoring) {
+      currentConversation.push({
+        role: role,
+        content: text,
+        thinking: thinking || '',
+        timestamp: new Date().toISOString()
+      });
+    }
 
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -520,6 +588,8 @@
     }
 
     chatMessages.appendChild(messageDiv);
+    // Persist conversation when new message arrives (skip during restore)
+    if (!isRestoring) { persistConversation(); }
     chatMessages.scrollTop = chatMessages.scrollHeight;
   };
 
@@ -548,6 +618,9 @@
           }
         }
       }
+
+      // Persist conversation after assistant update
+      persistConversation();
 
       if (thinking && thinking.length > 0) {
         const bubble = lastMessage.querySelector('.message-bubble');
@@ -635,6 +708,11 @@
     if (chatMessages) {
       chatMessages.innerHTML = '';
     }
+    // Clear persisted state when starting a new chat
+    try {
+      localStorage.removeItem(STORAGE_KEYS.conversation);
+      localStorage.removeItem(STORAGE_KEYS.input);
+    } catch (e) {}
   };
 
   // Make functions globally accessible
@@ -647,6 +725,10 @@
     initHistoryElements();
     initHistoryListeners();
     updateSendButton();
+
+    // Restore UI state so reopening the plasmoid doesn't reset chat
+    restoreFromStorage();
+
     console.log('Dooms AI HTML Frontend initialized');
   });
 })();
