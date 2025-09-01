@@ -125,6 +125,7 @@ The system initializes with real-time progress display:
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/a3bdf384-ccaa-4bc5-a98a-0723cf6e909b" alt="Chat Interface" width="720" />
+  
   <em>Combat-ready chat interface with archive access</em>
 </p>
 
