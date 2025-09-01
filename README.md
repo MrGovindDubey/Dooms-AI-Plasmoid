@@ -124,13 +124,14 @@ The system initializes with real-time progress display:
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ba5f3793-30cf-4abe-9bf2-10f28362d6ab" alt="Chat Interface" width="720" />
+  <img src="https://github.com/user-attachments/assets/a3bdf384-ccaa-4bc5-a98a-0723cf6e909b" alt="Chat Interface" width="720" />
   <em>Combat-ready chat interface with archive access</em>
 </p>
 
 > **Note**: Screenshots will auto-display once added to `docs/images/`
 
 ---
+
 
 
 
