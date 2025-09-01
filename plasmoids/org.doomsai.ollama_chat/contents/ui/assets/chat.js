@@ -32,6 +32,14 @@
     }
   }
 
+  // Basic HTML escaping to safely display hidden thinking content
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function updateSendButton() {
     ensureDom();
     if (!messageInput || !sendButton) return;
@@ -408,8 +416,11 @@
     const roleAlt = role === 'user' ? 'User' : 'AI';
     const avatarSrc = '../logo.png';
 
+    const showThinkingUI = (role === 'assistant') && (hasThinking || isLoading);
+    const sanitizedThinking = hasThinking ? escapeHtml(thinking).replace(/\n/g, '<br>') : '';
     const thinkingToggle = hasThinking ? '<div class="thinking-toggle" onclick="toggleThinking(this)">▶</div>' : '';
-    const thinkingContent = hasThinking ? `<div class="thinking-content"><strong>💭 Thinking:</strong><br>${thinking}</div>` : '';
+    const thinkingSummary = showThinkingUI ? '<div class="thinking-summary" onclick="toggleThinking(this)">💭 thinking...</div>' : '';
+    const thinkingContent = hasThinking ? `<div class="thinking-content"><strong>💭 Thinking:</strong><br>${sanitizedThinking}</div>` : '';
 
     messageDiv.innerHTML = `
       <div class="message-bubble">
@@ -420,6 +431,7 @@
           </div>
           ${thinkingToggle}
         </div>
+        ${thinkingSummary}
         ${thinkingContent}
         <div class="message-content"></div>
       </div>`;
@@ -454,34 +466,65 @@
       }
 
       if (thinking && thinking.length > 0) {
-        let thinkingDiv = lastMessage.querySelector('.thinking-content');
+        const bubble = lastMessage.querySelector('.message-bubble');
+        const header = lastMessage.querySelector('.message-header');
+
+        // Ensure toggle exists
+        if (header && !header.querySelector('.thinking-toggle')) {
+          header.innerHTML += '<div class="thinking-toggle" onclick="toggleThinking(this)">▶</div>';
+        }
+
+        // Ensure summary exists
+        let summaryDiv = bubble.querySelector('.thinking-summary');
+        if (!summaryDiv) {
+          summaryDiv = document.createElement('div');
+          summaryDiv.className = 'thinking-summary';
+          summaryDiv.textContent = '💭 thinking...';
+          summaryDiv.setAttribute('onclick', 'toggleThinking(this)');
+          bubble.insertBefore(summaryDiv, bubble.querySelector('.message-content'));
+        }
+
+        // Ensure content exists
+        let thinkingDiv = bubble.querySelector('.thinking-content');
         if (!thinkingDiv) {
-          const header = lastMessage.querySelector('.message-header');
-          if (header && !header.querySelector('.thinking-toggle')) {
-            header.innerHTML += '<div class="thinking-toggle" onclick="toggleThinking(this)">▶</div>';
-          }
           thinkingDiv = document.createElement('div');
           thinkingDiv.className = 'thinking-content';
-          lastMessage.querySelector('.message-bubble').insertBefore(
-            thinkingDiv, lastMessage.querySelector('.message-content')
-          );
+          bubble.insertBefore(thinkingDiv, bubble.querySelector('.message-content'));
         }
-        // Do not auto-expand; keep collapsed by default
-        thinkingDiv.innerHTML = `<strong>💭 Thinking:</strong><br>${thinking}`;
+
+        // Sanitize and update content; keep collapsed by default
+        const sanitized = escapeHtml(thinking).replace(/\n/g, '<br>');
+        thinkingDiv.innerHTML = `<strong>💭 Thinking:</strong><br>${sanitized}`;
+      }
+      // Ensure summary exists during streaming even if no hidden thinking text
+      if ((!thinking || thinking.length === 0) && isLoading) {
+        const bubble = lastMessage.querySelector('.message-bubble');
+        if (bubble && !bubble.querySelector('.thinking-summary')) {
+          const summaryDiv = document.createElement('div');
+          summaryDiv.className = 'thinking-summary';
+          summaryDiv.textContent = '💭 thinking...';
+          summaryDiv.setAttribute('onclick', 'toggleThinking(this)');
+          bubble.insertBefore(summaryDiv, bubble.querySelector('.message-content'));
+        }
       }
     }
     chatMessages.scrollTop = chatMessages.scrollHeight;
   };
 
   window.toggleThinking = function(button) {
-    const thinkingContent = button.closest('.message-bubble').querySelector('.thinking-content');
+    const bubble = button.closest('.message-bubble');
+    if (!bubble) return;
+    const thinkingContent = bubble.querySelector('.thinking-content');
     if (!thinkingContent) return;
-    if (thinkingContent.classList.contains('visible')) {
+    const arrow = bubble.querySelector('.thinking-toggle');
+
+    const isVisible = thinkingContent.classList.contains('visible');
+    if (isVisible) {
       thinkingContent.classList.remove('visible');
-      button.textContent = '▶';
+      if (arrow) arrow.textContent = '▶';
     } else {
       thinkingContent.classList.add('visible');
-      button.textContent = '▼';
+      if (arrow) arrow.textContent = '▼';
     }
   };
 

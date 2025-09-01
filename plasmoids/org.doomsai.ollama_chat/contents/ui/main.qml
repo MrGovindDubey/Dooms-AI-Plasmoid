@@ -223,19 +223,22 @@ PlasmoidItem {
                 if (currentText.length > 0) {
                     fullResponse = currentText
                     
-                    // Parse thinking vs final response
+                    // Parse thinking vs final response (support <thinking> and <think>)
                     let thinkingContent = ""
                     let finalContent = currentText
                     let displayText = currentText
-                    
-                    if (currentText.includes('<thinking>') && currentText.includes('</thinking>')) {
-                        const thinkingMatch = currentText.match(/<thinking>([\s\S]*?)<\/thinking>/i)
-                        const afterThinking = currentText.split(/<\/thinking>/i)[1]
-                        if (thinkingMatch) {
-                            thinkingContent = thinkingMatch[1].trim()
-                            finalContent = afterThinking ? afterThinking.trim() : currentText
-                            displayText = finalContent || "thinking..."
+
+                    const thinkBlockRegex = /<(thinking|think)>[\s\S]*?<\/(thinking|think)>/i
+                    const thinkCaptureRegex = /<(thinking|think)>([\s\S]*?)<\/(thinking|think)>/i
+
+                    if (thinkBlockRegex.test(currentText)) {
+                        const m = currentText.match(thinkCaptureRegex)
+                        if (m) {
+                            thinkingContent = (m[2] || "").trim()
                         }
+                        const withoutThink = currentText.replace(thinkBlockRegex, "").trim()
+                        finalContent = withoutThink.length ? withoutThink : currentText
+                        displayText = withoutThink.length ? withoutThink : "thinking..."
                     }
                     
                     // Update HTML with live response

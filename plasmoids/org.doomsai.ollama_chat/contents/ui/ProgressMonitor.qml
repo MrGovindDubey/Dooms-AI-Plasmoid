@@ -10,6 +10,8 @@ Item {
     property string currentMessage: ""
     property int currentPercent: 0
     property string currentSpeed: ""
+    property string setupSource: ""
+    property string readerSource: ""
     
     signal progressUpdated(string step, string message, int percent, string speed)
     signal setupCompleted()
@@ -20,7 +22,8 @@ Item {
         isMonitoring = true
         
         // Start the setup process
-        setupProcess.connectSource("bash '" + parentRoot.pkgFile("../scripts/progress-monitor.sh") + "' '" + model + "'")
+        setupSource = "bash '" + parentRoot.pkgFile("../scripts/progress-monitor.sh") + "' '" + model + "'"
+        setupProcess.connectSource(setupSource)
         
         // Start monitoring progress
         progressTimer.start()
@@ -29,8 +32,12 @@ Item {
     function stopMonitoring() {
         isMonitoring = false
         progressTimer.stop()
-        setupProcess.disconnectSource()
-        progressReader.disconnectSource()
+        if (setupSource && setupSource.length) {
+            setupProcess.disconnectSource(setupSource)
+        }
+        if (readerSource && readerSource.length) {
+            progressReader.disconnectSource(readerSource)
+        }
     }
     
     // Timer to periodically read progress
@@ -42,7 +49,8 @@ Item {
         
         onTriggered: {
             if (isMonitoring) {
-                progressReader.connectSource("bash '" + parentRoot.pkgFile("../scripts/progress-reader.sh") + "'")
+                readerSource = "bash '" + parentRoot.pkgFile("../scripts/progress-reader.sh") + "'"
+                progressReader.connectSource(readerSource)
             }
         }
     }
